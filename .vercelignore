@@ -1,0 +1,43 @@
+# Build outputs
+.next/
+out/
+
+# Dependencies
+node_modules/
+
+# Local configuration and environment
+.env
+.env.*
+.env*.local
+.vercel/
+
+# Credentials and private keys
+*credentials*.json
+*service-account*.json
+google-service-account*.json
+google-credentials*.json
+
+# Data and contacts safety
+*.csv
+!data/nexa_store/demo_*.csv
+*.xlsx
+*.xls
+*.vcf
+*.db
+*.sqlite
+*.sql
+*.bak
+*.backup
+/exports/
+/backups/
+/logs/
+/dumps/
+/credentials/
+/secrets/
+/outputs/
+/scratch/
+/contactos/
+/clientes/
+/pedidos_reales/
+/leads_reales/
+/data_real/

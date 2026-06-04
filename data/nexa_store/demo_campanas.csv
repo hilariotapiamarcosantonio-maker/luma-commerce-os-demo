@@ -1,0 +1,2 @@
+"id","nombre","fecha_inicio","fecha_fin","cohorte","mensaje","canal","estado","resultado","notas"
+"CAM-MOCK-1","Lanzamiento Nexa Store","2026-06-01","2026-06-15","tienda_online","Hola! Bienvenidos a la nueva colección de Nexa Store.","WhatsApp","Activo","En progreso","Campaña demo de lanzamiento"

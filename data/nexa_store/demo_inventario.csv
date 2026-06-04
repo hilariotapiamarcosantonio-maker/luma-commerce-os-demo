@@ -1,0 +1,3 @@
+"id","producto_id","producto","movimiento","cantidad","fecha","motivo","responsable","notas"
+"INV-MOCK-1","prod-1","Fragancia Aura Nº1","Entrada","50","2026-06-01","Carga inicial de inventario","Equipo Nexa","Stock inicial demo"
+"INV-MOCK-2","prod-2","Fragancia Terra Nº2","Entrada","40","2026-06-01","Carga inicial de inventario","Equipo Nexa","Stock inicial demo"

@@ -1,0 +1,2 @@
+"id","pedido_id","contacto_id","cliente_nombre","telefono","fecha_entrega","monto_total","cuota_1","fecha_cuota_1","estado_cuota_1","fecha_pago_cuota_1","cuota_2","fecha_cuota_2","estado_cuota_2","fecha_pago_cuota_2","saldo_pendiente","estado_plan","notas"
+"PQ-MOCK-1","NX-ORD-0002","CON-MOCK-2","Cliente Demo 002","809-000-0002","2026-06-02","5500","2750","2026-06-17","Cuota 1 pendiente","","2750","2026-07-02","Cuota 2 pendiente","","5500","Cuota 1 pendiente","Plan de cuotas demo"

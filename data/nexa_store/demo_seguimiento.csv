@@ -1,0 +1,2 @@
+"id","fecha","contacto_id","nombre","telefono","canal","accion","estado","proxima_fecha","responsable","notas"
+"SEG-MOCK-1","2026-06-02","CON-MOCK-2","Cliente Demo 002","809-000-0002","WhatsApp","Confirmar pedido","Pendiente","2026-06-02","Equipo Nexa","Confirmación de plan quincenal"

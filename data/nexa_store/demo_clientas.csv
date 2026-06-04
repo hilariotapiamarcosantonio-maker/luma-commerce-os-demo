@@ -1,0 +1,4 @@
+"id","contacto_id","nombre","telefono","tipo_clienta","limite_credito","puede_fiar","estado","fecha_creacion","notas"
+"CLI-MOCK-1","CON-MOCK-1","Cliente Demo 001","809-000-0001","Online","0","FALSE","Activa","2026-06-01","Pedido registrado"
+"CLI-MOCK-2","CON-MOCK-2","Cliente Demo 002","809-000-0002","Clienta fiel","10000","TRUE","Activa","2026-06-02","Plan Quincenal Clienta Fiel activo"
+"CLI-MOCK-3","CON-MOCK-3","Cliente Demo 003","809-000-0003","Online","0","FALSE","Activa","2026-06-03","Pedido registrado"

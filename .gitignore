@@ -1,0 +1,73 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+node_modules/
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# testing
+/coverage
+
+# next.js
+.next/
+out/
+
+# production
+/build
+
+# misc
+.DS_Store
+Thumbs.db
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# local env files
+.env
+.env.local
+.env.*
+!.env.example
+.env*.local
+
+# vercel
+.vercel/
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# local Google credentials
+*credentials*.json
+*service-account*.json
+google-service-account*.json
+google-credentials*.json
+
+# Data and contacts safety rules
+*.csv
+!data/nexa_store/demo_*.csv
+*.xlsx
+*.xls
+*.vcf
+*.db
+*.sqlite
+*.sql
+*.bak
+*.backup
+/exports/
+/backups/
+/logs/
+/dumps/
+/credentials/
+/secrets/
+/outputs/
+/scratch/
+/contactos/
+/clientes/
+/pedidos_reales/
+/leads_reales/
+/data_real/
