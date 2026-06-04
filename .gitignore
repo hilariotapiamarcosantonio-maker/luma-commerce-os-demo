@@ -71,3 +71,5 @@ google-credentials*.json
 /pedidos_reales/
 /leads_reales/
 /data_real/
+
+.vercel
