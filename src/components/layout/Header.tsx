@@ -1,20 +1,32 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Menu } from "lucide-react";
 import { brand } from "@/lib/brand";
 
-const pageTitles: Record<string, string> = {
-  "/": "Panel",
-  "/admin": "Admin",
-};
-
 export function Header({ onMenuClick }: { onMenuClick: () => void }) {
   const pathname = usePathname();
-  const title =
-    pageTitles[pathname] ||
-    (pathname?.startsWith("/admin/") ? "Detalle de venta" : undefined) ||
-    "Panel";
+  const searchParams = useSearchParams();
+  const filter = searchParams ? searchParams.get("filter") : null;
+
+  let title = "Panel";
+  if (pathname === "/admin") {
+    title = "Ventas y CxC";
+  } else if (pathname === "/admin/dashboard") {
+    title = "Panel Principal";
+  } else if (pathname === "/admin/leads") {
+    title = "Pedidos / Leads";
+  } else if (pathname === "/admin/contactos") {
+    if (filter === "lanzamiento_500") {
+      title = "Lanzamiento 500";
+    } else if (filter === "seguimiento") {
+      title = "Seguimiento WhatsApp";
+    } else {
+      title = "Contactos";
+    }
+  } else if (pathname?.startsWith("/admin/")) {
+    title = "Detalle de venta";
+  }
 
   return (
     <header className="flex h-16 shrink-0 items-center gap-3 border-b border-crm-line bg-crm-bg px-4 sm:px-6 lg:px-8">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { usePathname } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -44,7 +44,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         onClose={() => setMobileSidebarOpen(false)}
       />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <Header onMenuClick={() => setMobileSidebarOpen(true)} />
+        <Suspense fallback={<div className="h-16 bg-crm-bg border-b border-crm-line" />}>
+          <Header onMenuClick={() => setMobileSidebarOpen(true)} />
+        </Suspense>
         <div className="bg-crm-gold/15 border-b border-crm-gold/30 text-crm-gold text-xs px-4 py-2 text-center font-bold tracking-wide flex items-center justify-center gap-2 shrink-0 select-none">
           <span>🔒</span>
           <span>Panel de Control Demo - Simulación Comercial con Datos Ficticios</span>
