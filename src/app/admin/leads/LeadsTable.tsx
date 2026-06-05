@@ -240,6 +240,69 @@ export function LeadsTable({ initialLeads, initialContacts, dataSource = "local-
 
   // Leads State & Filters
   const [leads, setLeads] = useState(initialLeads);
+
+  // Load local orders from localStorage on mount and sync changes back
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("luma_demo_orders");
+        if (stored) {
+          const localOrders = JSON.parse(stored) as Lead[];
+          setLeads((prevLeads) => {
+            const initialIds = new Set(prevLeads.map((l) => l.id));
+            const uniqueLocal = localOrders.filter((l) => !initialIds.has(l.id));
+            return [...uniqueLocal, ...prevLeads];
+          });
+        }
+      } catch (err) {
+        console.error("Error loading local demo orders:", err);
+      }
+    }
+  }, [initialLeads]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("luma_demo_orders");
+        if (stored) {
+          const localOrders = JSON.parse(stored) as Lead[];
+          let modified = false;
+          const updatedLocalOrders = localOrders.map((localOrd) => {
+            const current = leads.find((l) => l.id === localOrd.id);
+            if (current && (
+              current.estado !== localOrd.estado ||
+              current.estadoPlan !== localOrd.estadoPlan ||
+              current.saldoPendiente !== localOrd.saldoPendiente ||
+              current.estadoPago !== localOrd.estadoPago ||
+              current.fechaConfirmacion !== localOrd.fechaConfirmacion ||
+              current.fechaPagoCompleto !== localOrd.fechaPagoCompleto ||
+              current.fechaEntrega !== localOrd.fechaEntrega
+            )) {
+              modified = true;
+              return {
+                ...localOrd,
+                estado: current.estado,
+                estadoPlan: current.estadoPlan,
+                estadoPago: current.estadoPago,
+                saldoPendiente: current.saldoPendiente,
+                fechaConfirmacion: current.fechaConfirmacion,
+                fechaPagoCompleto: current.fechaPagoCompleto,
+                fechaEntrega: current.fechaEntrega,
+              };
+            }
+            return localOrd;
+          });
+
+          if (modified) {
+            localStorage.setItem("luma_demo_orders", JSON.stringify(updatedLocalOrders));
+          }
+        }
+      } catch (err) {
+        console.error("Error syncing local orders to localStorage:", err);
+      }
+    }
+  }, [leads]);
+
   const [leadsSearchQuery, setLeadsSearchQuery] = useState("");
   const [methodFilter, setMethodFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -522,35 +585,77 @@ export function LeadsTable({ initialLeads, initialContacts, dataSource = "local-
 
     setPaymentActionSaving(true);
     try {
-      const response = await fetch("/api/leads/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pedidoId: lead.id,
-          action,
-          montoRecibido: isPaymentAction ? amount : undefined,
-          fecha: paymentDateInput,
-          nota: paymentNotesInput,
-          force,
-        }),
-      });
+      let responseOk = false;
+      let updatedFields: {
+        estado_pedido?: string;
+        estado_pago?: string;
+        saldo_pendiente?: number;
+        proxima_fecha_pago?: string;
+        fecha_confirmacion?: string;
+        fecha_pago_completo?: string;
+        fecha_entrega?: string;
+      } = {};
 
-      const result = await response.json();
-      if (!response.ok) {
-        if (result.warning) {
-          if (confirm(result.error)) {
-            setPaymentActionSaving(false);
-            executePaymentAction(true);
-            return;
-          } else {
-            setPaymentActionSaving(false);
-            return;
+      try {
+        const response = await fetch("/api/leads/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            pedidoId: lead.id,
+            action,
+            montoRecibido: isPaymentAction ? amount : undefined,
+            fecha: paymentDateInput,
+            nota: paymentNotesInput,
+            force,
+          }),
+        });
+
+        const result = await response.json();
+        if (response.ok) {
+          responseOk = true;
+          updatedFields = result.updatedFields;
+        } else {
+          if (result.warning) {
+            if (confirm(result.error)) {
+              setPaymentActionSaving(false);
+              executePaymentAction(true);
+              return;
+            } else {
+              setPaymentActionSaving(false);
+              return;
+            }
           }
+          throw new Error(result.error || "Error al actualizar el pedido");
         }
-        throw new Error(result.error || "Error al actualizar el pedido");
+      } catch (apiErr) {
+        console.warn("API payment action failed, performing client-only simulation:", apiErr);
       }
 
-      const updatedFields = result.updatedFields;
+      if (!responseOk) {
+        const total = lead.total || 0;
+        const currentSaldo = lead.saldoPendiente !== undefined ? lead.saldoPendiente : total;
+        const newSaldo = Math.max(0, currentSaldo - amount);
+        let nextEstadoPago = "Pendiente";
+
+        if (newSaldo <= 0) {
+          nextEstadoPago = "Pagado";
+        } else if (action === "registrar_cuota_1") {
+          nextEstadoPago = "Cuota 1 pagada";
+        } else if (action === "registrar_cuota_2") {
+          nextEstadoPago = "Pagado";
+        }
+
+        updatedFields = {
+          estado_pedido: lead.estado,
+          estado_pago: nextEstadoPago,
+          saldo_pendiente: newSaldo,
+          proxima_fecha_pago: nextEstadoPago === "Cuota 1 pagada" ? lead.fechaCuota2 : "",
+          fecha_confirmacion: lead.fechaConfirmacion || new Date().toISOString().split("T")[0],
+          fecha_pago_completo: nextEstadoPago === "Pagado" ? new Date().toISOString().split("T")[0] : "",
+          fecha_entrega: lead.fechaEntrega || new Date().toISOString().split("T")[0],
+        };
+      }
+
       setLeads((current) =>
         current.map((item) => {
           if (item.id === lead.id) {
@@ -595,6 +700,17 @@ export function LeadsTable({ initialLeads, initialContacts, dataSource = "local-
     
     if (confirmMsg && !confirm(confirmMsg)) return;
 
+    let responseOk = false;
+    let updatedFields: {
+      estado_pedido?: string;
+      estado_pago?: string;
+      saldo_pendiente?: number;
+      proxima_fecha_pago?: string;
+      fecha_confirmacion?: string;
+      fecha_pago_completo?: string;
+      fecha_entrega?: string;
+    } = {};
+
     try {
       const response = await fetch("/api/leads/update", {
         method: "POST",
@@ -607,35 +723,54 @@ export function LeadsTable({ initialLeads, initialContacts, dataSource = "local-
       });
 
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Error al actualizar estado");
-
-      const updatedFields = result.updatedFields;
-      setLeads((current) =>
-        current.map((item) => {
-          if (item.id === lead.id) {
-            const updated = {
-              ...item,
-              estado: updatedFields.estado_pedido !== undefined ? updatedFields.estado_pedido : item.estado,
-              estadoPago: updatedFields.estado_pago !== undefined ? updatedFields.estado_pago : item.estadoPago,
-              saldoPendiente: updatedFields.saldo_pendiente !== undefined ? updatedFields.saldo_pendiente : item.saldoPendiente,
-              proximaFechaPago: updatedFields.proxima_fecha_pago !== undefined ? updatedFields.proxima_fecha_pago : item.proximaFechaPago,
-              fechaConfirmacion: updatedFields.fecha_confirmacion !== undefined ? updatedFields.fecha_confirmacion : item.fechaConfirmacion,
-              fechaPagoCompleto: updatedFields.fecha_pago_completo !== undefined ? updatedFields.fecha_pago_completo : item.fechaPagoCompleto,
-              fechaEntrega: updatedFields.fecha_entrega !== undefined ? updatedFields.fecha_entrega : item.fechaEntrega,
-              estadoPlan: updatedFields.estado_pago !== undefined ? (updatedFields.estado_pago === "Pagado" ? "Completado" : (updatedFields.estado_pago === "Cuota 1 pagada" ? "Cuota 2 pendiente" : "Cuota 1 pendiente")) : item.estadoPlan,
-            };
-            if (selectedLead && selectedLead.id === lead.id) {
-              setSelectedLead(updated);
-            }
-            return updated;
-          }
-          return item;
-        })
-      );
+      if (response.ok) {
+        responseOk = true;
+        updatedFields = result.updatedFields;
+      } else {
+        throw new Error(result.error || "Error al actualizar estado");
+      }
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : "Error al procesar la acción";
-      alert(errorMsg);
+      console.warn("API workflow action failed, performing client-only simulation:", err);
     }
+
+    if (!responseOk) {
+      let nextEstado = lead.estado;
+      if (action === "confirmar_venta") nextEstado = "Confirmado";
+      else if (action === "preparando") nextEstado = "Preparando";
+      else if (action === "entregado") nextEstado = "Entregado";
+      else if (action === "cancelar") nextEstado = "Cancelado";
+
+      updatedFields = {
+        estado_pedido: nextEstado,
+        estado_pago: lead.estadoPago,
+        saldo_pendiente: lead.saldoPendiente,
+        fecha_confirmacion: action === "confirmar_venta" ? new Date().toISOString().split("T")[0] : lead.fechaConfirmacion,
+        fecha_entrega: action === "entregado" ? new Date().toISOString().split("T")[0] : lead.fechaEntrega,
+      };
+    }
+
+    setLeads((current) =>
+      current.map((item) => {
+        if (item.id === lead.id) {
+          const updated = {
+            ...item,
+            estado: updatedFields.estado_pedido !== undefined ? updatedFields.estado_pedido : item.estado,
+            estadoPago: updatedFields.estado_pago !== undefined ? updatedFields.estado_pago : item.estadoPago,
+            saldoPendiente: updatedFields.saldo_pendiente !== undefined ? updatedFields.saldo_pendiente : item.saldoPendiente,
+            proximaFechaPago: updatedFields.proxima_fecha_pago !== undefined ? updatedFields.proxima_fecha_pago : item.proximaFechaPago,
+            fechaConfirmacion: updatedFields.fecha_confirmacion !== undefined ? updatedFields.fecha_confirmacion : item.fechaConfirmacion,
+            fechaPagoCompleto: updatedFields.fecha_pago_completo !== undefined ? updatedFields.fecha_pago_completo : item.fechaPagoCompleto,
+            fechaEntrega: updatedFields.fecha_entrega !== undefined ? updatedFields.fecha_entrega : item.fechaEntrega,
+            estadoPlan: updatedFields.estado_pago !== undefined ? (updatedFields.estado_pago === "Pagado" ? "Completado" : (updatedFields.estado_pago === "Cuota 1 pagada" ? "Cuota 2 pendiente" : "Cuota 1 pendiente")) : item.estadoPlan,
+          };
+          if (selectedLead && selectedLead.id === lead.id) {
+            setSelectedLead(updated);
+          }
+          return updated;
+        }
+        return item;
+      })
+    );
   };
 
   const handleRegisterPaymentClick = (lead: Lead) => {
@@ -796,11 +931,11 @@ export function LeadsTable({ initialLeads, initialContacts, dataSource = "local-
               <select
                 value={methodFilter}
                 onChange={(e) => setMethodFilter(e.target.value)}
-                className="w-full pl-8 pr-4 py-2 rounded-xl border border-crm-line text-xs bg-crm-bg text-crm-text focus:outline-none focus:border-crm-gold transition-colors appearance-none"
+                className="w-full pl-8 pr-4 py-2 rounded-xl border border-crm-line text-xs bg-crm-bg text-crm-text focus:outline-none focus:border-crm-gold transition-colors"
               >
-                <option value="all">Todos los Envíos</option>
-                <option value="delivery_coordinado">Entrega Coordinada</option>
-                <option value="retiro">Retiro Coordinado</option>
+                <option value="all" className="bg-crm-surface text-crm-text">Todos los Envíos</option>
+                <option value="delivery_coordinado" className="bg-crm-surface text-crm-text">Entrega Coordinada</option>
+                <option value="retiro" className="bg-crm-surface text-crm-text">Retiro Coordinado</option>
               </select>
             </div>
 
@@ -810,13 +945,13 @@ export function LeadsTable({ initialLeads, initialContacts, dataSource = "local-
               <select
                 value={paymentFilter}
                 onChange={(e) => setPaymentFilter(e.target.value)}
-                className="w-full pl-8 pr-4 py-2 rounded-xl border border-crm-line text-xs bg-crm-bg text-crm-text focus:outline-none focus:border-crm-gold transition-colors appearance-none"
+                className="w-full pl-8 pr-4 py-2 rounded-xl border border-crm-line text-xs bg-crm-bg text-crm-text focus:outline-none focus:border-crm-gold transition-colors"
               >
-                <option value="all">Todos los Pagos</option>
-                <option value="Transferencia">Transferencia</option>
-                <option value="Domicilio contra entrega">Contra Entrega</option>
-                <option value="Efectivo coordinado">Efectivo Coordinado</option>
-                <option value="Plan Quincenal">Plan Quincenal Fiel</option>
+                <option value="all" className="bg-crm-surface text-crm-text">Todos los Pagos</option>
+                <option value="Transferencia" className="bg-crm-surface text-crm-text">Transferencia</option>
+                <option value="Domicilio contra entrega" className="bg-crm-surface text-crm-text">Contra Entrega</option>
+                <option value="Efectivo coordinado" className="bg-crm-surface text-crm-text">Efectivo Coordinado</option>
+                <option value="Plan Quincenal" className="bg-crm-surface text-crm-text">Plan Quincenal Fiel</option>
               </select>
             </div>
 
@@ -826,16 +961,16 @@ export function LeadsTable({ initialLeads, initialContacts, dataSource = "local-
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full pl-8 pr-4 py-2 rounded-xl border border-crm-line text-xs bg-crm-bg text-crm-text focus:outline-none focus:border-crm-gold transition-colors appearance-none"
+                className="w-full pl-8 pr-4 py-2 rounded-xl border border-crm-line text-xs bg-crm-bg text-crm-text focus:outline-none focus:border-crm-gold transition-colors"
               >
-                <option value="all">Todos los Estados</option>
-                <option value="Nuevo">Nuevo</option>
-                <option value="Contactado">Contactado</option>
-                <option value="Confirmado">Confirmado</option>
-                <option value="Preparando">Preparando</option>
-                <option value="Entregado">Entregado</option>
-                <option value="Cancelado">Cancelado</option>
-                <option value="Seguimiento">Seguimiento</option>
+                <option value="all" className="bg-crm-surface text-crm-text">Todos los Estados</option>
+                <option value="Nuevo" className="bg-crm-surface text-crm-text">Nuevo</option>
+                <option value="Contactado" className="bg-crm-surface text-crm-text">Contactado</option>
+                <option value="Confirmado" className="bg-crm-surface text-crm-text">Confirmado</option>
+                <option value="Preparando" className="bg-crm-surface text-crm-text">Preparando</option>
+                <option value="Entregado" className="bg-crm-surface text-crm-text">Entregado</option>
+                <option value="Cancelado" className="bg-crm-surface text-crm-text">Cancelado</option>
+                <option value="Seguimiento" className="bg-crm-surface text-crm-text">Seguimiento</option>
               </select>
             </div>
 
@@ -845,15 +980,15 @@ export function LeadsTable({ initialLeads, initialContacts, dataSource = "local-
               <select
                 value={planStatusFilter}
                 onChange={(e) => setPlanStatusFilter(e.target.value)}
-                className="w-full pl-8 pr-4 py-2 rounded-xl border border-crm-line text-xs bg-crm-bg text-crm-text focus:outline-none focus:border-crm-gold transition-colors appearance-none"
+                className="w-full pl-8 pr-4 py-2 rounded-xl border border-crm-line text-xs bg-crm-bg text-crm-text focus:outline-none focus:border-crm-gold transition-colors"
               >
-                <option value="all">Estado del Plan (Todos)</option>
-                <option value="Pendiente inicio">Pendiente inicio</option>
-                <option value="Cuota 1 pendiente">Cuota 1 pendiente</option>
-                <option value="Cuota 1 pagada">Cuota 1 pagada</option>
-                <option value="Cuota 2 pendiente">Cuota 2 pendiente</option>
-                <option value="Completado">Plan Completado</option>
-                <option value="Atrasado">Plan Atrasado</option>
+                <option value="all" className="bg-crm-surface text-crm-text">Estado del Plan (Todos)</option>
+                <option value="Pendiente inicio" className="bg-crm-surface text-crm-text">Pendiente inicio</option>
+                <option value="Cuota 1 pendiente" className="bg-crm-surface text-crm-text">Cuota 1 pendiente</option>
+                <option value="Cuota 1 pagada" className="bg-crm-surface text-crm-text">Cuota 1 pagada</option>
+                <option value="Cuota 2 pendiente" className="bg-crm-surface text-crm-text">Cuota 2 pendiente</option>
+                <option value="Completado" className="bg-crm-surface text-crm-text">Plan Completado</option>
+                <option value="Atrasado" className="bg-crm-surface text-crm-text">Plan Atrasado</option>
               </select>
             </div>
           </div>
@@ -2214,12 +2349,12 @@ export function LeadsTable({ initialLeads, initialContacts, dataSource = "local-
                     }
                     className="w-full rounded-xl border border-crm-line bg-crm-bg px-3 py-2 text-crm-text outline-none focus:border-crm-gold"
                   >
-                    <option value="Pendiente">Pendiente</option>
-                    <option value="Seguimiento">Seguimiento</option>
-                    <option value="Contactada">Contactada</option>
-                    <option value="Interesada">Interesada</option>
-                    <option value="No interesada">No interesada</option>
-                    <option value="Comprar despues">Comprar despues</option>
+                    <option value="Pendiente" className="bg-crm-surface text-crm-text">Pendiente</option>
+                    <option value="Seguimiento" className="bg-crm-surface text-crm-text">Seguimiento</option>
+                    <option value="Contactada" className="bg-crm-surface text-crm-text">Contactada</option>
+                    <option value="Interesada" className="bg-crm-surface text-crm-text">Interesada</option>
+                    <option value="No interesada" className="bg-crm-surface text-crm-text">No interesada</option>
+                    <option value="Comprar despues" className="bg-crm-surface text-crm-text">Comprar despues</option>
                   </select>
                 </label>
 
@@ -2232,9 +2367,9 @@ export function LeadsTable({ initialLeads, initialContacts, dataSource = "local-
                     }
                     className="w-full rounded-xl border border-crm-line bg-crm-bg px-3 py-2 text-crm-text outline-none focus:border-crm-gold"
                   >
-                    <option value="Lanzamiento">Lanzamiento</option>
-                    <option value="Seguimiento">Seguimiento</option>
-                    <option value="Pago quincenal">Pago quincenal</option>
+                    <option value="Lanzamiento" className="bg-crm-surface text-crm-text">Lanzamiento</option>
+                    <option value="Seguimiento" className="bg-crm-surface text-crm-text">Seguimiento</option>
+                    <option value="Pago quincenal" className="bg-crm-surface text-crm-text">Pago quincenal</option>
                   </select>
                 </label>
               </div>

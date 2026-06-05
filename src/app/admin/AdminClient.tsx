@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useTransition } from "react";
+import { useState, useMemo, useTransition, useEffect } from "react";
 import { DateRangePicker, type DateRange } from "@/components/ui/DateRangePicker";
 import { PageHeader } from "@/components/layout/PageHeader";
 import type { NexaDashboardData, NexaSale } from "@/types/crm";
@@ -39,17 +39,110 @@ function weekKey(dateStr: string) {
   return toDateInput(date);
 }
 
+interface LocalOrder {
+  id: string;
+  fecha: string;
+  nombre: string;
+  apellido: string;
+  whatsapp: string;
+  email?: string;
+  provincia: string;
+  municipio?: string;
+  direccion: string;
+  referencia?: string;
+  notas: string;
+  itemsSummary?: string;
+  subtotal: number;
+  tax: number;
+  delivery: number;
+  total: number;
+  metodoPago: string;
+  modalidadPago: string;
+  cuota1?: number;
+  cuota2?: number;
+  fechaCuota1?: string;
+  fechaCuota2?: string;
+  observaciones?: string;
+  clienteFiel?: string;
+  estadoPlan?: string;
+  estadoPago?: string;
+  saldoPendiente?: number;
+  proximaFechaPago?: string;
+}
+
 const defaultRange: DateRange = { from: "2000-01-01", to: "2099-12-31" };
 
 export function AdminClient({ data }: { data: NexaDashboardData }) {
   const [range, setRange] = useState<DateRange>(defaultRange);
   const [, startTransition] = useTransition();
+  const [sales, setSales] = useState<NexaSale[]>(data.sales);
 
   const handleRange = (r: DateRange) => startTransition(() => setRange(r));
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem("luma_demo_orders");
+        if (stored) {
+          const localOrders = JSON.parse(stored) as LocalOrder[];
+          const mappedSales: NexaSale[] = localOrders.map((order: LocalOrder) => {
+            const isPlan = order.modalidadPago === "Plan Quincenal Clienta Fiel" || order.modalidadPago === "Plan Quincenal";
+            const total = Number(order.total) || 0;
+            const saldo = order.saldoPendiente !== undefined ? Number(order.saldoPendiente) : total;
+            const abonado = Math.max(0, total - saldo);
+
+            return {
+              ventaId: order.id,
+              clienteId: `CON-${order.id}`,
+              fechaRegistro: order.fecha,
+              fechaVenta: order.fecha,
+              fechaEntrega: order.fecha,
+              fechaCobro: order.fechaCuota1 || order.fecha,
+              fechaProximoPago: order.proximaFechaPago || order.fecha,
+              provincia: order.provincia || "No especificada",
+              nombre: order.nombre || "",
+              apellido: order.apellido || "",
+              nombreCliente: `${order.nombre || ""} ${order.apellido || ""}`.trim(),
+              whatsapp: order.whatsapp || "",
+              direccion: order.direccion || "",
+              cedula: "",
+              producto: order.itemsSummary || "Productos",
+              lineaVendida: order.itemsSummary || "Productos",
+              familiaProducto: order.itemsSummary || "Productos",
+              otrosProductos: "",
+              totalVenta: total,
+              pagosPendientes: isPlan ? "2 cuotas quincenales" : "",
+              cuotasPagadas: order.estadoPago === "Pagado" ? 2 : (order.estadoPago === "Cuota 1 pagada" ? 1 : 0),
+              maximoCuotas: isPlan ? 2 : 0,
+              cicloPago: isPlan ? "quincenal" : "",
+              montoAbonado1: order.cuota1 && order.estadoPago !== "Pendiente" ? Number(order.cuota1) : 0,
+              montoAbonado2: order.cuota2 && order.estadoPago === "Pagado" ? Number(order.cuota2) : 0,
+              totalAbonado: abonado,
+              montoRestante: saldo,
+              estadoCobro: order.estadoPago || "Pendiente",
+              responsable: "Equipo Nexa",
+              fuenteArchivo: "local-storage",
+              fuenteHoja: "Pedidos",
+              filaOrigen: "",
+              fuentesConsolidadas: "Local Storage",
+            };
+          });
+
+          setSales((prevSales) => {
+            const initialIds = new Set(prevSales.map((s) => s.ventaId));
+            const uniqueLocal = mappedSales.filter((s) => !initialIds.has(s.ventaId));
+            return [...uniqueLocal, ...prevSales];
+          });
+        }
+      } catch (err) {
+        console.error("Error loading local orders in AdminClient:", err);
+      }
+    }
+  }, [data.sales]);
+
   const filteredSales = useMemo(
-    () => data.sales.filter((s) => inRange(saleDate(s), range.from, range.to)),
-    [data.sales, range]
+    () => sales.filter((s) => inRange(saleDate(s), range.from, range.to)),
+    [sales, range]
   );
 
   const totalVentas = filteredSales.reduce((s, r) => s + r.totalVenta, 0);
@@ -65,11 +158,11 @@ export function AdminClient({ data }: { data: NexaDashboardData }) {
     const year = today.slice(0, 4);
 
     const summarize = (label: string, predicate: (date: string) => boolean) => {
-      const sales = data.sales.filter((sale) => predicate(saleDate(sale)));
+      const matchedSales = sales.filter((sale) => predicate(saleDate(sale)));
       return {
         label,
-        ventas: sales.length,
-        total: sales.reduce((sum, sale) => sum + sale.totalVenta, 0),
+        ventas: matchedSales.length,
+        total: matchedSales.reduce((sum, sale) => sum + sale.totalVenta, 0),
       };
     };
 
@@ -81,7 +174,7 @@ export function AdminClient({ data }: { data: NexaDashboardData }) {
       summarize("Mes", (date) => date.startsWith(month)),
       summarize("Año", (date) => date.startsWith(year)),
     ];
-  }, [data.sales]);
+  }, [sales]);
 
   return (
     <div className="space-y-5">

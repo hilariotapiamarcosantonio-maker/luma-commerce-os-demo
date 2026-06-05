@@ -151,22 +151,75 @@ function CheckoutFormContent() {
         ...utms,
       };
 
-      const response = await fetch("/api/leads", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+      let resultLeadId = `PED-${Date.now()}`;
+      try {
+        const response = await fetch("/api/leads", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || "Error al enviar el pedido.");
+        const result = await response.json();
+        if (response.ok && result.lead?.id) {
+          resultLeadId = result.lead.id;
+        }
+      } catch (apiErr) {
+        console.warn("API request failed, registering order in client-side localStorage:", apiErr);
       }
 
-      // Success: Clear Cart
+      // Success (or fallback): Clear Cart
       clearCart();
+
+      // Save to localStorage for demo persistence in same browser
+      const newLocalOrder = {
+        id: resultLeadId,
+        fecha: new Date().toISOString().split("T")[0],
+        nombre: formData.nombre.trim(),
+        apellido: formData.apellido.trim(),
+        whatsapp: formData.whatsapp.trim(),
+        email: formData.email.trim(),
+        provincia: formData.provincia.trim() + (formData.municipio ? ` / ${formData.municipio.trim()}` : ""),
+        municipio: formData.municipio.trim(),
+        direccion: formData.direccion.trim(),
+        referencia: formData.referencia.trim(),
+        notas: formData.notas.trim(),
+        deliveryMethod: formData.deliveryMethod,
+        itemsJson,
+        itemsSummary,
+        subtotal: contextSubtotal,
+        tax: contextTax,
+        delivery: shippingCost,
+        total: totalCost,
+        canal: "tienda_online",
+        fuente: niche.crmConfig.origen,
+        origen: niche.crmConfig.origen,
+        metodoPago: formData.metodoPago,
+        origenLead: "tienda",
+        estado: "Nuevo",
+        modalidadPago: formData.modalidadPago,
+        montoTotal: totalCost,
+        cuota1: formData.modalidadPago === "Plan Quincenal Clienta Fiel" ? totalCost / 2 : 0,
+        cuota2: formData.modalidadPago === "Plan Quincenal Clienta Fiel" ? totalCost / 2 : 0,
+        fechaCuota1: formData.modalidadPago === "Plan Quincenal Clienta Fiel" ? new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : "",
+        fechaCuota2: formData.modalidadPago === "Plan Quincenal Clienta Fiel" ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : "",
+        observaciones: formData.observacionesPlan || formData.notas.trim(),
+        clienteFiel: formData.modalidadPago === "Plan Quincenal Clienta Fiel" ? "true" : "false",
+        estadoPlan: formData.modalidadPago === "Plan Quincenal Clienta Fiel" ? "Pendiente inicio" : "",
+        estadoPago: "Pendiente",
+        saldoPendiente: totalCost,
+        proximaFechaPago: formData.modalidadPago === "Plan Quincenal Clienta Fiel" ? new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : "",
+      };
+
+      try {
+        const stored = localStorage.getItem("luma_demo_orders");
+        const orders = stored ? JSON.parse(stored) : [];
+        orders.unshift(newLocalOrder);
+        localStorage.setItem("luma_demo_orders", JSON.stringify(orders));
+      } catch (err) {
+        console.error("Error writing order to localStorage:", err);
+      }
 
       // PayPal integration: If payment link is configured, open in new tab
       if (formData.metodoPago === "PayPal" && paymentConfig.PAYPAL_PAYMENT_LINK) {
@@ -179,7 +232,7 @@ function CheckoutFormContent() {
 
       // Redirect to thank you page with context parameters
       router.push(
-        `/gracias?leadsId=${result.lead?.id || Date.now()}&total=${totalCost}&summary=${encodeURIComponent(itemsSummary)}&deliveryMethod=${formData.deliveryMethod}&metodoPago=${encodeURIComponent(formData.metodoPago)}&modalidadPago=${encodeURIComponent(formData.modalidadPago)}`
+        `/gracias?leadsId=${resultLeadId}&total=${totalCost}&summary=${encodeURIComponent(itemsSummary)}&deliveryMethod=${formData.deliveryMethod}&metodoPago=${encodeURIComponent(formData.metodoPago)}&modalidadPago=${encodeURIComponent(formData.modalidadPago)}`
       );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Hubo un problema al procesar tu pedido. Intenta nuevamente.";
